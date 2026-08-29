@@ -299,7 +299,7 @@ var state = runtimeState{
 
 func Init(opts Options) {
 	if opts.Endpoint == "" {
-		opts.Endpoint = "http://localhost:3001"
+		opts.Endpoint = "https://ingest.loggify.cloud"
 	}
 	opts.Endpoint = strings.TrimRight(opts.Endpoint, "/")
 	if opts.SampleRate == 0 {
