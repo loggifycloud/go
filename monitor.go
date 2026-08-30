@@ -9,9 +9,11 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"os"
 	"regexp"
 	"runtime"
 	"runtime/debug"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -39,6 +41,7 @@ type Options struct {
 	FlushIntervalMs int
 	MaxBuffer       int
 	TimeoutMs       int
+	Hostname        string
 }
 
 type TraceContext struct {
@@ -313,6 +316,9 @@ func Init(opts Options) {
 	}
 	if opts.TimeoutMs == 0 {
 		opts.TimeoutMs = 1500
+	}
+	if opts.Hostname == "" {
+		opts.Hostname = resolveHostname()
 	}
 	copied := opts
 	state.mu.Lock()
@@ -614,9 +620,37 @@ func collectRuntime() {
 	state.mu.RLock()
 	started := state.started
 	state.mu.RUnlock()
-	state.metricBuf.push(map[string]any{"metricName": "memory_usage", "value": float64(mem.Alloc) / 1024.0 / 1024.0})
-	state.metricBuf.push(map[string]any{"metricName": "heap_used", "value": float64(mem.HeapAlloc) / 1024.0 / 1024.0})
-	state.metricBuf.push(map[string]any{"metricName": "process_uptime", "value": time.Since(started).Seconds()})
+	pushMetric("memory_usage", float64(mem.Alloc)/1024.0/1024.0)
+	pushMetric("heap_used", float64(mem.HeapAlloc)/1024.0/1024.0)
+	pushMetric("process_uptime", time.Since(started).Seconds())
+}
+
+func pushMetric(name string, value float64) {
+	state.mu.RLock()
+	opts := state.opts
+	state.mu.RUnlock()
+	event := map[string]any{"metricName": name, "value": value}
+	tags := map[string]string{"pid": strconv.Itoa(os.Getpid())}
+	if opts != nil {
+		event["serviceName"] = opts.Service
+		event["environment"] = opts.Environment
+		if opts.Hostname != "" {
+			tags["hostname"] = opts.Hostname
+		}
+	}
+	event["tags"] = tags
+	state.metricBuf.push(event)
+}
+
+func resolveHostname() string {
+	if host := strings.TrimSpace(os.Getenv("HOSTNAME")); host != "" {
+		return clip(host, 255)
+	}
+	host, err := os.Hostname()
+	if err != nil {
+		return ""
+	}
+	return clip(strings.TrimSpace(host), 255)
 }
 
 func post(path string, body map[string]any, attempt int) {
