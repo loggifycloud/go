@@ -647,8 +647,8 @@ func resolveHostname() string {
 		return clip(host, 255)
 	}
 	host, err := os.Hostname()
-	if err != nil {
-		return ""
+	if err != nil || strings.TrimSpace(host) == "" {
+		return "localhost"
 	}
 	return clip(strings.TrimSpace(host), 255)
 }
